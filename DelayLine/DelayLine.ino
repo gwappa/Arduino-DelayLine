@@ -19,69 +19,17 @@
  * [Output settings]
  * Output pin can be one of any other pins.
  * Specify it using the OUTPUT_PIN macro (default #13).
- * 
- * [Delay latency settings]
- * The delay latency can be configured by writing to the serial port.
- *
- * Send a single character to the port, where its ordinal is:
- *
- * $$ \mathrm{ord}(c) = \mathrm{ord}(' ') + r $$
- *
- * where $c$ is the character and $r$ is the command flag.
- * note that the code for the space character ' ' is 32.
- *
- * the command flag is interpreted as follows (note that the flag
- * can range from 0 to 63):
- *
- * | bit|     7|     6|     5|     4|     3|     2|     1|     0|
- * |----|------|------|------|------|------|------|------|------|
- * |desc|      |      |ENABLE|FEXP=1|  EXP1|  EXP0| FRAC1| FRAC0|
- * |    |      |      |      |FEXP=0|  LIN3|  LIN2|  LIN1|  LIN0|
- *
- * + The device will generate output only when `ENABLE` is asserted.
- * + If `FEXP` is asserted, bits 2 and 3 will be interpreted using the "exponential mode".
- *   Otherwise, bits 0-3 will be interpreted using the "linear mode".
- *   
- * + Exponential mode:
- *   - The exponent part `EXP` is calculated as `EXP1 * 2 + EXP0`.
- *   - If the exponent part is larger than `0`, then the fractional part `FRAC`
- *     is interpreted as `FRAC1 * 2 + FRAC0`.
- *   - The actual delay will be calculated as `(2 ^ FRAC + 1) * (10 ^ EXP)`
- *   (note the condition `EXP > 0`).
- *   
- * + Linear mode:
- *   - bits 0–3 will be evaluated as an unsigned integer `LIN`.
- *   - The actual delay will be calculated as `DELAY_FACTOR * LIN` ms.
- *   - The macro `DELAY_FACTOR` is 20 by default.
- *   
- * + If both the exponent and the fractional parts are `0`, 
- *   then the device falls into the "direct-output" mode (i.e. no delay).
  */
 
 // the size of the buffer (ON + OFF)
-#define BUFFER_SIZE 720
-#define DELAY_FACTOR 20
+// e.g. the value '800' corresponds to 400 event cycles
+#define BUFFER_SIZE 800
 
 #define RISE_DETECTOR 2
 #define FALL_DETECTOR 3
 #define OUTPUT_PIN 13
 
-#define FLAG_ENABLE     ((char)0x20)
-#define FLAG_EXPMODE    ((char)0x10)
-#define FLAG_DELAY      ((char)0x0F)
-#define FLAG_EXP        ((char)0x0C)
-#define FLAG_FRAC       ((char)0x03)
-#define FLAG_EXP1       ((char)0x08)
-#define FLAG_EXP0       ((char)0x04)
-#define FLAG_FRAC1      ((char)0x02)
-#define FLAG_FRAC0      ((char)0x01)
-#define HasDelay(CF)    ((CF) & FLAG_DELAY)
-#define GetExponent(CF) (((CF) & FLAG_EXP)?  ( (((CF) & FLAG_EXP1 )?100:1) * (((CF) & FLAG_EXP0 )?10:1) ):1)
-#define GetFraction(CF)                     ( (((CF) & FLAG_FRAC1)?  4:1) * (((CF) & FLAG_FRAC0)? 2:1) )
-#define AsLinear(CF)    (((uint8_t)((CF) & FLAG_DELAY)) * (DELAY_FACTOR))
-
 // default: enabled, direct mode
-#define DEFAULT_CONFIG  ((char)0x30)
 #define BAUD            115200
 
 // offset-related macros
@@ -116,8 +64,6 @@ void setup() {
 
   Serial.begin(BAUD);
   
-  setConfig(DEFAULT_CONFIG);
-  
   // attach interrupts
   attachInterrupt(digitalPinToInterrupt(RISE_DETECTOR), onevent, RISING);
   attachInterrupt(digitalPinToInterrupt(FALL_DETECTOR), offevent, FALLING);
@@ -135,7 +81,7 @@ void loop() {
   // to see if the schedule must be updated.
   cli();
   // it is just an inequality check since it can be `reader > writer` (eg when an overflow occurred).
-  bool scheduleUpdate = (reader != writer);
+  const bool scheduleUpdate = (reader != writer);
   sei();
 
   if (scheduleUpdate) {
@@ -171,7 +117,7 @@ void onevent() {
   if (hasDelay) {
 
     // update the scheduler
-    unsigned int target = TIMESTAMP() + latency_ms;
+    const unsigned int target = TIMESTAMP() + latency_ms;
     scheduler[writer] = target;
     INCREMENT(writer);
 
@@ -199,7 +145,7 @@ void offevent() {
   if (hasDelay) {
 
     // update the scheduler
-    unsigned int target = TIMESTAMP() + latency_ms;
+    const unsigned int target = TIMESTAMP() + latency_ms;
     scheduler[writer] = target;
     INCREMENT(writer);
 
@@ -216,6 +162,7 @@ void offevent() {
   }
 }
 
+/*
 void serialEvent() {
   cli();
   int c = Serial.read();
@@ -268,3 +215,4 @@ void setConfig(const char& ch) {
     Serial.println("disabled");
   }
 }
+*/
